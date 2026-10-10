@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import {
-  RotateCcw, Award, Filter,
+  HelpCircle, CheckCircle2, XCircle, RotateCcw, Award, Filter,
   ArrowRight, BookOpen, Layers, Shuffle, Star, Trash2, RefreshCw, BarChart2
 } from 'lucide-react';
 
-export default function QuizView({ allQuestions = [], set1Questions = [], set2Questions = [], _quizSets = [], questions }) {
+export default function QuizView({ allQuestions = [], set1Questions = [], set2Questions = [], quizSets = [], questions }) {
   // Fallback pool
   const pool = useMemo(() => {
     return allQuestions.length > 0 ? allQuestions : (questions || []);
@@ -14,9 +14,9 @@ export default function QuizView({ allQuestions = [], set1Questions = [], set2Qu
   // Persistent States from LocalStorage
   const [userAnswers, setUserAnswers] = useState(() => {
     try {
-      const saved = localStorage.getItem('cpu_quiz_answers_v2');
+      const saved = localStorage.getItem('cpu_quiz_answers_v1');
       return saved ? JSON.parse(saved) : {};
-    } catch {
+    } catch (e) {
       return {};
     }
   });
@@ -25,7 +25,7 @@ export default function QuizView({ allQuestions = [], set1Questions = [], set2Qu
     try {
       const saved = localStorage.getItem('cpu_quiz_bookmarks_v1');
       return saved ? JSON.parse(saved) : {};
-    } catch {
+    } catch (e) {
       return {};
     }
   });
@@ -44,20 +44,20 @@ export default function QuizView({ allQuestions = [], set1Questions = [], set2Qu
   // Sync state to LocalStorage
   useEffect(() => {
     try {
-      localStorage.setItem('cpu_quiz_answers_v2', JSON.stringify(userAnswers));
-    } catch {}
+      localStorage.setItem('cpu_quiz_answers_v1', JSON.stringify(userAnswers));
+    } catch (e) {}
   }, [userAnswers]);
 
   useEffect(() => {
     try {
       localStorage.setItem('cpu_quiz_bookmarks_v1', JSON.stringify(bookmarks));
-    } catch {}
+    } catch (e) {}
   }, [bookmarks]);
 
   useEffect(() => {
     try {
       localStorage.setItem('cpu_quiz_set_v1', selectedSet);
-    } catch {}
+    } catch (e) {}
   }, [selectedSet]);
 
   // Filter pool by question set
@@ -136,7 +136,7 @@ export default function QuizView({ allQuestions = [], set1Questions = [], set2Qu
     if (percent >= 70) {
       try {
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-      } catch {}
+      } catch (e) {}
     }
   };
 
@@ -152,9 +152,8 @@ export default function QuizView({ allQuestions = [], set1Questions = [], set2Qu
       setIsSubmitted(false);
       setCurrentIdx(0);
       try {
-        localStorage.removeItem('cpu_quiz_answers_v2');
         localStorage.removeItem('cpu_quiz_answers_v1');
-      } catch {}
+      } catch (e) {}
     }
   };
 

@@ -1,264 +1,266 @@
-import React, { useState, useMemo } from 'react';
-import { Calculator, ArrowRight, Zap, TrendingUp, AlertCircle, CheckCircle2, Sliders } from 'lucide-react';
+import React, { useState } from 'react';
+import { Calculator, Zap, Clock, TrendingUp, HelpCircle, Layers, CheckCircle2 } from 'lucide-react';
 
 export default function AddressCalculator() {
   const [numInstructions, setNumInstructions] = useState(100);
   const [numStages, setNumStages] = useState(5);
-  const [clockPeriodNs, setClockPeriodNs] = useState(1.0); // 1.0 ns (1 GHz)
-  const [stallCycles, setStallCycles] = useState(10); // hazard penalties
+  const [cycleTimeNs, setCycleTimeNs] = useState(2.0);
+  const [stallCycles, setStallCycles] = useState(15);
 
-  const calc = useMemo(() => {
-    const n = Math.max(1, parseInt(numInstructions, 10) || 1);
-    const k = Math.max(1, parseInt(numStages, 10) || 1);
-    const period = Math.max(0.1, parseFloat(clockPeriodNs) || 1.0);
-    const stalls = Math.max(0, parseInt(stallCycles, 10) || 0);
+  // Calculations
+  const nonPipeCycles = numInstructions * numStages;
+  const nonPipeTimeNs = nonPipeCycles * cycleTimeNs;
 
-    // Non-pipelined calculations
-    const nonPipeCycles = n * k;
-    const nonPipeTimeNs = nonPipeCycles * period;
-    const nonPipeThroughputIpc = (1 / k).toFixed(3);
+  const idealPipeCycles = numStages + numInstructions - 1;
+  const realPipeCycles = idealPipeCycles + stallCycles;
+  const realPipeTimeNs = realPipeCycles * cycleTimeNs;
 
-    // Pipelined ideal calculations
-    const pipeIdealCycles = k + n - 1;
-    const idealSpeedup = (nonPipeCycles / pipeIdealCycles).toFixed(2);
+  const speedupReal = (nonPipeCycles / realPipeCycles).toFixed(2);
+  const speedupIdeal = (nonPipeCycles / idealPipeCycles).toFixed(2);
+  const maxTheoreticalSpeedup = numStages.toFixed(1);
 
-    // Pipelined actual calculations (with stalls)
-    const pipeActualCycles = pipeIdealCycles + stalls;
-    const pipeActualTimeNs = pipeActualCycles * period;
-    const actualSpeedup = (nonPipeCycles / pipeActualCycles).toFixed(2);
-    const actualIpc = (n / pipeActualCycles).toFixed(3);
-    const efficiency = ((actualSpeedup / k) * 100).toFixed(1);
+  const ipcReal = (numInstructions / realPipeCycles).toFixed(3);
+  const ipcIdeal = (numInstructions / idealPipeCycles).toFixed(3);
 
-    // Time saved
-    const timeSavedNs = Math.max(0, nonPipeTimeNs - pipeActualTimeNs);
-    const timeSavedPercent = ((timeSavedNs / nonPipeTimeNs) * 100).toFixed(1);
+  // Clock frequency in GHz = 1 / cycleTimeNs
+  const clockFreqGHz = (1 / cycleTimeNs).toFixed(2);
+  // MIPS = IPC * (ClockFreq in MHz) = IPC * (1000 / cycleTimeNs)
+  const mipsReal = ((numInstructions / (realPipeTimeNs / 1000))).toFixed(1);
 
-    return {
-      n, k, period, stalls,
-      nonPipeCycles, nonPipeTimeNs, nonPipeThroughputIpc,
-      pipeIdealCycles, idealSpeedup,
-      pipeActualCycles, pipeActualTimeNs, actualSpeedup, actualIpc,
-      efficiency, timeSavedNs, timeSavedPercent
-    };
-  }, [numInstructions, numStages, clockPeriodNs, stallCycles]);
+  // Time saved percentage
+  const timeSavedPct = (((nonPipeTimeNs - realPipeTimeNs) / nonPipeTimeNs) * 100).toFixed(1);
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
-      <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-          <Calculator size={28} color="#4f46e5" />
-          <span>เครื่องคำนวณประสิทธิภาพและอัตราเร่งไปป์ไลน์ (Pipeline Speedup Calculator)</span>
-        </h2>
-        <p style={{ color: '#64748b', fontSize: '14.5px', marginTop: '6px' }}>
-          วิเคราะห์ Latency, Throughput (IPC), เวลารวม และ Speedup เปรียบเทียบระหว่าง Non-pipelined กับ Pipelined
-        </p>
-      </div>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 16px' }}>
+      <div className="sim-container">
+        <div className="sim-header">
+          <span className="module-badge">PERFORMANCE CALCULATOR</span>
+          <h2 style={{ marginTop: '8px', fontSize: '24px', fontWeight: '800' }}>
+            เครื่องคำนวณประสิทธิภาพและอัตราเร่งไปป์ไลน์ (Pipeline Speedup & Throughput Calculator)
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '14.5px' }}>
+            คำนวณและเปรียบเทียบเวลาประมวลผล, อัตราเร่ง (Speedup Factor), Throughput (IPC/MIPS) และผลกระทบของการเกิด Stalls
+          </p>
+        </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px', marginBottom: '28px' }}>
-        {/* Input Parameters Panel */}
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#334155', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Sliders size={18} color="#4f46e5" />
-            <span>กำหนดค่าพารามิเตอร์การประมวลผล</span>
-          </h3>
+        {/* Input Parameters Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', marginBottom: '28px', background: '#f8fafc', padding: '20px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)' }}>
+          {/* Instructions count slider */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                จำนวนคำสั่ง (n):
+              </label>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: 'var(--indigo-primary)' }}>
+                {numInstructions.toLocaleString()} คำสั่ง
+              </span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="1000"
+              step="1"
+              value={numInstructions}
+              onChange={(e) => setNumInstructions(parseInt(e.target.value, 10))}
+              style={{ width: '100%', accentColor: 'var(--indigo-primary)', cursor: 'pointer' }}
+            />
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+              {[1, 3, 10, 50, 100, 500, 1000].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setNumInstructions(v)}
+                  style={{ fontSize: '11px', padding: '2px 6px', background: numInstructions === v ? 'var(--indigo-primary)' : '#e2e8f0', color: numInstructions === v ? '#fff' : '#475569', borderRadius: '4px' }}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Number of Instructions */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ fontSize: '13.5px', fontWeight: '600', color: '#475569' }}>จำนวนคำสั่งทั้งหมด (n):</label>
-                <span style={{ fontWeight: '700', color: '#4f46e5', fontFamily: 'JetBrains Mono, monospace' }}>{calc.n.toLocaleString()} คำสั่ง</span>
-              </div>
-              <input
-                type="range"
-                min="1"
-                max="1000"
-                step="1"
-                value={numInstructions}
-                onChange={(e) => setNumInstructions(e.target.value)}
-                style={{ width: '100%', cursor: 'pointer' }}
-              />
-              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                {[3, 10, 50, 100, 500, 1000].map(v => (
-                  <button
-                    key={v}
-                    onClick={() => setNumInstructions(v)}
-                    style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', background: calc.n === v ? '#4f46e5' : '#f8fafc', color: calc.n === v ? '#ffffff' : '#64748b', cursor: 'pointer' }}
-                  >
-                    {v}
-                  </button>
-                ))}
+          {/* Number of stages (k) slider */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                จำนวนสเตจ (k):
+              </label>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: 'var(--indigo-primary)' }}>
+                {numStages} สเตจ
+              </span>
+            </div>
+            <input
+              type="range"
+              min="2"
+              max="20"
+              step="1"
+              value={numStages}
+              onChange={(e) => setNumStages(parseInt(e.target.value, 10))}
+              style={{ width: '100%', accentColor: 'var(--indigo-primary)', cursor: 'pointer' }}
+            />
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+              {[3, 5, 8, 10, 14, 20].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setNumStages(v)}
+                  style={{ fontSize: '11px', padding: '2px 6px', background: numStages === v ? 'var(--indigo-primary)' : '#e2e8f0', color: numStages === v ? '#fff' : '#475569', borderRadius: '4px' }}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cycle time (tau) */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                เวลารอบสัญญาณนาฬิกา (τ):
+              </label>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: 'var(--indigo-primary)' }}>
+                {cycleTimeNs} ns ({clockFreqGHz} GHz)
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0.5"
+              max="10.0"
+              step="0.5"
+              value={cycleTimeNs}
+              onChange={(e) => setCycleTimeNs(parseFloat(e.target.value))}
+              style={{ width: '100%', accentColor: 'var(--indigo-primary)', cursor: 'pointer' }}
+            />
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+              ความถี่สัญญาณนาฬิกา: {clockFreqGHz} GHz
+            </div>
+          </div>
+
+          {/* Stall cycles */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <label style={{ fontSize: '13.5px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                รอบที่เกิด Hazards / Stalls:
+              </label>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: '700', color: '#b45309' }}>
+                {stallCycles} รอบ
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="200"
+              step="5"
+              value={stallCycles}
+              onChange={(e) => setStallCycles(parseInt(e.target.value, 10))}
+              style={{ width: '100%', accentColor: '#b45309', cursor: 'pointer' }}
+            />
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+              ผลกระทบจาก Data/Control Stalls
+            </div>
+          </div>
+        </div>
+
+        {/* Big Metric Display Cards */}
+        <div className="metric-grid" style={{ marginBottom: '24px' }}>
+          <div className="metric-card" style={{ borderTop: '4px solid var(--emerald-success)' }}>
+            <div className="metric-label">อัตราเร่งจริง (Speedup Factor)</div>
+            <div className="metric-value" style={{ color: 'var(--emerald-success)' }}>
+              {speedupReal}x
+            </div>
+            <div className="metric-desc">
+              ในอุดมคติ: {speedupIdeal}x (สูงสุดทฤษฎี: {maxTheoreticalSpeedup}x)
+            </div>
+          </div>
+
+          <div className="metric-card" style={{ borderTop: '4px solid var(--indigo-primary)' }}>
+            <div className="metric-label">เวลาที่ประหยัดได้ (Time Saved)</div>
+            <div className="metric-value" style={{ color: 'var(--indigo-primary)' }}>
+              {timeSavedPct}%
+            </div>
+            <div className="metric-desc">
+              ลดลงจาก {nonPipeTimeNs.toLocaleString()} ns เหลือ {realPipeTimeNs.toLocaleString()} ns
+            </div>
+          </div>
+
+          <div className="metric-card" style={{ borderTop: '4px solid var(--sky-info)' }}>
+            <div className="metric-label">Throughput (อัตรางานจริง)</div>
+            <div className="metric-value" style={{ color: 'var(--sky-info)' }}>
+              {ipcReal} IPC
+            </div>
+            <div className="metric-desc">
+              อัตราการประมวลผล: {mipsReal} MIPS
+            </div>
+          </div>
+
+          <div className="metric-card" style={{ borderTop: '4px solid #64748b' }}>
+            <div className="metric-label">รอบเวลารวม (Total Cycles)</div>
+            <div className="metric-value" style={{ color: '#475569' }}>
+              {realPipeCycles.toLocaleString()}
+            </div>
+            <div className="metric-desc">
+              เทียบกับไม่ใช้ไปป์ไลน์: {nonPipeCycles.toLocaleString()} รอบ
+            </div>
+          </div>
+        </div>
+
+        {/* Visual Bar Comparison */}
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '20px', marginBottom: '24px' }}>
+          <h4 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '16px', color: 'var(--text-primary)' }}>
+            📊 แผนภูมิเปรียบเทียบระยะเวลาทั้งหมด (Execution Time Comparison)
+          </h4>
+
+          {/* Non-pipelined Bar */}
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', fontWeight: '600' }}>
+              <span style={{ color: 'var(--rose-danger)' }}>แบบไม่ใช้ไปป์ไลน์ (Non-Pipelined)</span>
+              <span>{nonPipeCycles.toLocaleString()} รอบ ({nonPipeTimeNs.toLocaleString()} ns)</span>
+            </div>
+            <div style={{ background: '#f1f5f9', height: '28px', borderRadius: '6px', overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: '100%', background: 'linear-gradient(90deg, #f43f5e, #e11d48)', color: '#fff', fontSize: '12px', display: 'flex', alignItems: 'center', paddingLeft: '10px', fontWeight: '700' }}>
+                100% (เกณฑ์ฐาน)
               </div>
             </div>
+          </div>
 
-            {/* Number of Stages */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ fontSize: '13.5px', fontWeight: '600', color: '#475569' }}>จำนวนสเตจของไปป์ไลน์ (k):</label>
-                <span style={{ fontWeight: '700', color: '#4f46e5', fontFamily: 'JetBrains Mono, monospace' }}>{calc.k} สเตจ</span>
-              </div>
-              <input
-                type="range"
-                min="2"
-                max="20"
-                step="1"
-                value={numStages}
-                onChange={(e) => setNumStages(e.target.value)}
-                style={{ width: '100%', cursor: 'pointer' }}
-              />
-              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                {[3, 4, 5, 8, 10, 20].map(v => (
-                  <button
-                    key={v}
-                    onClick={() => setNumStages(v)}
-                    style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', background: calc.k === v ? '#4f46e5' : '#f8fafc', color: calc.k === v ? '#ffffff' : '#64748b', cursor: 'pointer' }}
-                  >
-                    {v} สเตจ
-                  </button>
-                ))}
-              </div>
+          {/* Pipelined Bar */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px', fontWeight: '600' }}>
+              <span style={{ color: 'var(--emerald-success)' }}>แบบใช้ไปป์ไลน์ (Pipelined + Stalls)</span>
+              <span>{realPipeCycles.toLocaleString()} รอบ ({realPipeTimeNs.toLocaleString()} ns)</span>
             </div>
-
-            {/* Clock Period */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ fontSize: '13.5px', fontWeight: '600', color: '#475569' }}>เวลาต่อรอบสัญญาณนาฬิกา (T):</label>
-                <span style={{ fontWeight: '700', color: '#4f46e5', fontFamily: 'JetBrains Mono, monospace' }}>{calc.period} ns ({((1 / calc.period) * 1000).toFixed(0)} MHz)</span>
-              </div>
-              <input
-                type="range"
-                min="0.2"
-                max="5.0"
-                step="0.1"
-                value={clockPeriodNs}
-                onChange={(e) => setClockPeriodNs(e.target.value)}
-                style={{ width: '100%', cursor: 'pointer' }}
-              />
-            </div>
-
-            {/* Stall Cycles */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                <label style={{ fontSize: '13.5px', fontWeight: '600', color: '#475569' }}>รอบที่สูญเสียจาก Hazards (Stall Cycles):</label>
-                <span style={{ fontWeight: '700', color: '#ea580c', fontFamily: 'JetBrains Mono, monospace' }}>{calc.stalls} รอบ</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={stallCycles}
-                onChange={(e) => setStallCycles(e.target.value)}
-                style={{ width: '100%', cursor: 'pointer' }}
-              />
-              <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '4px' }}>
-                *รอบเวลาที่เสียจากการหยุดรอ (Stalls) และการล้างท่อ (Flushes)
+            <div style={{ background: '#f1f5f9', height: '28px', borderRadius: '6px', overflow: 'hidden', display: 'flex' }}>
+              <div style={{ width: `${Math.max(4, Math.min(100, (realPipeCycles / nonPipeCycles) * 100))}%`, background: 'linear-gradient(90deg, #10b981, #059669)', color: '#fff', fontSize: '12px', display: 'flex', alignItems: 'center', paddingLeft: '10px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                {((realPipeCycles / nonPipeCycles) * 100).toFixed(1)}% ของเวลาเดิม
               </div>
             </div>
           </div>
         </div>
 
-        {/* Results Overview Metrics */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ background: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)', border: '1px solid #c7d2fe', borderRadius: '14px', padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Step-by-Step Formula Breakdown */}
+        <div style={{ background: '#f8fafc', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '20px' }}>
+          <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--indigo-primary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Calculator size={16} /> การคำนวณตามสูตรอย่างละเอียด:
+          </h4>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', fontSize: '13.5px', color: 'var(--text-secondary)' }}>
             <div>
-              <div style={{ fontSize: '12px', fontWeight: '700', color: '#4338ca', textTransform: 'uppercase', letterSpacing: '0.5px' }}>อัตราเร่งความเร็วจริง (Actual Speedup)</div>
-              <div style={{ fontSize: '36px', fontWeight: '900', color: '#312e81', marginTop: '4px' }}>{calc.actualSpeedup}× เท่า</div>
-              <div style={{ fontSize: '12.5px', color: '#4338ca', marginTop: '2px' }}>
-                (ทางทฤษฎีอุดมคติสูงสุด: <strong>{calc.idealSpeedup}× เท่า</strong> | ขีดจำกัด n➔∞ คือ <strong>{calc.k}× เท่า</strong>)
-              </div>
-            </div>
-            <Zap size={44} color="#4f46e5" opacity={0.8} />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>Throughput ของไปป์ไลน์</div>
-              <div style={{ fontSize: '24px', fontWeight: '800', color: '#16a34a', marginTop: '4px' }}>{calc.actualIpc} <small style={{ fontSize: '13px' }}>IPC</small></div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>Non-pipe: {calc.nonPipeThroughputIpc} IPC</div>
+              <strong>1. เวลาแบบไม่ใช้ไปป์ไลน์:</strong><br />
+              <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>T_seq = n x k = {numInstructions} x {numStages} = {nonPipeCycles.toLocaleString()} รอบ</code>
             </div>
 
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
-              <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>ประสิทธิภาพท่อ (Efficiency)</div>
-              <div style={{ fontSize: '24px', fontWeight: '800', color: '#0284c7', marginTop: '4px' }}>{calc.efficiency}%</div>
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>เทียบกับขีดจำกัด k เท่า</div>
+            <div>
+              <strong>2. เวลาไปป์ไลน์ในอุดมคติ:</strong><br />
+              <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>T_ideal = k + n - 1 = {numStages} + {numInstructions} - 1 = {idealPipeCycles.toLocaleString()} รอบ</code>
+            </div>
+
+            <div>
+              <strong>3. เวลาไปป์ไลน์จริงรวม Stalls:</strong><br />
+              <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>T_real = T_ideal + Stalls = {idealPipeCycles} + {stallCycles} = {realPipeCycles.toLocaleString()} รอบ</code>
+            </div>
+
+            <div>
+              <strong>4. อัตราเร่งเชิงคำนวณ (Speedup):</strong><br />
+              <code style={{ background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>S = T_seq / T_real = {nonPipeCycles} / {realPipeCycles} = {speedupReal} เท่า</code>
             </div>
           </div>
-
-          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px' }}>
-            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600', marginBottom: '8px' }}>ระยะเวลาที่ประหยัดได้ (Time Saved):</div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <span style={{ fontSize: '22px', fontWeight: '800', color: '#16a34a' }}>{calc.timeSavedPercent}%</span>
-                <span style={{ fontSize: '13px', color: '#64748b', marginLeft: '8px' }}>({calc.timeSavedNs.toLocaleString()} ns)</span>
-              </div>
-              <div style={{ width: '120px', height: '10px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
-                <div style={{ width: `${calc.timeSavedPercent}%`, height: '100%', background: '#16a34a', borderRadius: '999px' }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Side-by-side Detailed Comparison Table */}
-      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-        <h3 style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b', marginBottom: '16px' }}>
-          ตารางเปรียบเทียบผลลัพธ์เชิงตัวเลขและการแจกแจงสูตร (Formula Breakdown):
-        </h3>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1', textAlign: 'left' }}>
-                <th style={{ padding: '12px 16px', color: '#334155' }}>รายการเปรียบเทียบ</th>
-                <th style={{ padding: '12px 16px', color: '#991b1b' }}>แบบไม่ใช้ไปป์ไลน์ (Non-Pipelined)</th>
-                <th style={{ padding: '12px 16px', color: '#15803d' }}>แบบใช้ไปป์ไลน์ (Pipelined)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '12px 16px', fontWeight: '600' }}>สูตรการคำนวณรอบเวลา</td>
-                <td style={{ padding: '12px 16px', fontFamily: 'JetBrains Mono, monospace' }}>n × k</td>
-                <td style={{ padding: '12px 16px', fontFamily: 'JetBrains Mono, monospace' }}>(k + n - 1) + Stalls</td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '12px 16px', fontWeight: '600' }}>จำนวนรอบสัญญาณนาฬิกาทั้งหมด</td>
-                <td style={{ padding: '12px 16px', fontWeight: '700', color: '#991b1b', fontFamily: 'JetBrains Mono, monospace' }}>
-                  {calc.nonPipeCycles.toLocaleString()} รอบ
-                </td>
-                <td style={{ padding: '12px 16px', fontWeight: '700', color: '#15803d', fontFamily: 'JetBrains Mono, monospace' }}>
-                  {calc.pipeActualCycles.toLocaleString()} รอบ
-                </td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '12px 16px', fontWeight: '600' }}>เวลารวมในการประมวลผล (นาโนวินาที)</td>
-                <td style={{ padding: '12px 16px', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-                  {calc.nonPipeTimeNs.toLocaleString()} ns
-                </td>
-                <td style={{ padding: '12px 16px', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-                  {calc.pipeActualTimeNs.toLocaleString()} ns
-                </td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '12px 16px', fontWeight: '600' }}>Throughput (คำสั่งต่อรอบ IPC)</td>
-                <td style={{ padding: '12px 16px', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-                  {calc.nonPipeThroughputIpc} IPC (1 คำสั่งในทุก {calc.k} รอบ)
-                </td>
-                <td style={{ padding: '12px 16px', color: '#475569', fontFamily: 'JetBrains Mono, monospace' }}>
-                  {calc.actualIpc} IPC (เกือบ 1 คำสั่งในทุก 1 รอบ)
-                </td>
-              </tr>
-              <tr>
-                <td style={{ padding: '12px 16px', fontWeight: '600' }}>Latency ต่อ 1 คำสั่งเดี่ยว</td>
-                <td style={{ padding: '12px 16px', color: '#475569' }}>
-                  {(calc.k * calc.period).toFixed(1)} ns ({calc.k} รอบ)
-                </td>
-                <td style={{ padding: '12px 16px', color: '#475569' }}>
-                  {(calc.k * calc.period).toFixed(1)} ns ({calc.k} รอบ - เท่าเดิม!)
-                </td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </div>
     </div>

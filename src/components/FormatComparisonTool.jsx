@@ -1,271 +1,279 @@
 import React, { useState } from 'react';
-import { Sliders, Cpu, Zap, ArrowRight, Check, X, ShieldAlert, GitCommit } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ShieldAlert, ArrowRight, Zap, RefreshCw, Cpu, Layers } from 'lucide-react';
 
 export default function FormatComparisonTool() {
-  const [selectedCategory, setSelectedCategory] = useState('single-vs-pipeline');
+  const [selectedHazard, setSelectedHazard] = useState('raw');
+  const [resolutionMode, setResolutionMode] = useState('resolved'); // 'unresolved' or 'resolved'
 
-  const comparisonData = {
-    'single-vs-pipeline': {
-      title: "เปรียบเทียบสถาปัตยกรรม CPU: Single-Cycle CPU vs 5-Stage Pipeline CPU",
-      subtitle: "ความแตกต่างระหว่างการประมวลผล 1 คำสั่งต่อรอบยาว กับการแบ่งงาน 5 สเตจคู่ขนาน",
-      cards: [
-        {
-          name: "Single-Cycle CPU (แบบไม่ใช้ไปป์ไลน์)",
-          tag: "ง่าย / ประสิทธิภาพต่ำ",
-          badgeColor: "#d97706",
-          features: [
-            { label: "วงรอบคำสั่ง", val: "ทุกขั้นตอน (Fetch-Decode-Ex-Mem-WB) จบใน 1 Clock Cycle" },
-            { label: "ความยาวรอบนาฬิกา", val: "ยาวมาก (ถูกกำหนดโดยขั้นตอนที่ช้าที่สุด เช่น Memory)" },
-            { label: "จำนวนคำสั่งพร้อมกัน", val: "1 คำสั่งเท่านั้น ไม่มีคำสั่งอื่นทำงานซ้อนทับ" },
-            { label: "ปัญหา Pipeline Hazards", val: "ไม่มี Hazards ใดๆ เกิดขึ้นในระบบอย่างแน่นอน" },
-            { label: "Throughput สูงสุด", val: "ต่ำมาก (ความถี่ CPU ต่ำมาก)" },
-            { label: "อุปมาอุปไมย", val: "คนล้างจาน 1 คน ทำล้าง-เช็ด-เก็บ ให้เสร็จก่อนหยิบใบถัดไป" }
-          ],
-          pros: [
-            "โครงสร้างวงจรควบคุมเรียบง่าย เข้าใจง่ายและสร้างง่าย",
-            "ไม่ต้องมีวงจรตรวจจับ Hazards หรือวงจร Forwarding",
-            "ไม่มีความล่าช้าสะสมจากแลตช์คั่นระหว่างสเตจ (No Latch Overhead)"
-          ],
-          cons: [
-            "ความเร็วสัญญาณนาฬิกาต่ำมาก (Critical Path ยาว)",
-            "ประสิทธิภาพ Throughput ต่ำมาก",
-            "หน่วยประมวลผลส่วนใหญ่ว่างงานเฉยๆ ในขณะที่รอสเตจที่ช้าที่สุด"
-          ]
-        },
-        {
-          name: "5-Stage Pipeline CPU (แบบใช้ไปป์ไลน์)",
-          tag: "คู่ขนาน / Throughput สูง",
-          badgeColor: "#4f46e5",
-          features: [
-            { label: "วงรอบคำสั่ง", val: "แบ่งเป็น 5 สเตจ (IF, ID, EX, MEM, WB) กั้นด้วยแลตช์" },
-            { label: "ความยาวรอบนาฬิกา", val: "สั้นมาก (เท่ากับเวลาของสเตจย่อยเพียงสเตจเดียว)" },
-            { label: "จำนวนคำสั่งพร้อมกัน", val: "มากถึง 5 คำสั่งกำลังประมวลผลในขั้นตอนต่างกัน" },
-            { label: "ปัญหา Pipeline Hazards", val: "มี Hazards (Data, Structural, Control) ที่ต้องจัดการ" },
-            { label: "Throughput สูงสุด", val: "สูงมาก (เข้าใกล้ 1 คำสั่งต่อรอบ หรือ 1 IPC ในทางทฤษฎี)" },
-            { label: "อุปมาอุปไมย", val: "คนล้างจาน 3 คน แบ่งหน้าที่ล้าง เช็ด เก็บ ส่งต่องานต่อเนื่อง" }
-          ],
-          pros: [
-            "Throughput สูงกว่าแบบ Single-cycle หลายเท่าตัว",
-            "สามารถเพิ่มความถี่สัญญาณนาฬิกา (Clock Speed / GHz) ได้สูงมาก",
-            "ทรัพยากรทุกชิ้นใน CPU ทำงานคุ้มค่าเกือบตลอดเวลา"
-          ],
-          cons: [
-            "โครงสร้างวงจรควบคุมซับซ้อนขึ้นมาก",
-            "เกิดปัญหา Hazards ทำให้ต้องมีการ Stall, Forward หรือ Flush",
-            "เวลาของคำสั่งเดี่ยว (Latency) เท่าเดิมหรือเพิ่มขึ้นเล็กน้อยจากแลตช์"
-          ]
-        }
-      ]
+  const hazards = {
+    raw: {
+      id: 'raw',
+      title: 'Data Hazard: RAW (Read After Write)',
+      badge: 'Data Hazard',
+      badgeClass: 'data-hazard',
+      codeSnippet: `I1: ADD R1, R2, R3    # R1 คำนวณเสร็จใน EX, บันทึกลง R1 ในสเตจ WB
+I2: SUB R4, R1, R5    # ต้องการอ่านค่า R1 ในสเตจ ID เพื่อนำไปลบ`,
+      cause: 'คำสั่ง I2 พยายามอ่านค่าจากรีจิสเตอร์ R1 ในสเตจ ID แต่คำสั่ง I1 ยังไม่ได้เขียนผลลัพธ์ลง R1 (จะเขียนในสเตจ WB)',
+      unresolvedCycles: [
+        { inst: "I1: ADD", stages: ["IF", "ID", "EX", "MEM", "WB", "-", "-"] },
+        { inst: "I2: SUB", stages: ["-", "IF", "ID(รอ)", "Bubble", "Bubble", "EX", "MEM"] }
+      ],
+      resolvedCycles: [
+        { inst: "I1: ADD", stages: ["IF", "ID", "EX (ALU ผลลัพธ์พร้อม)", "MEM", "WB"] },
+        { inst: "I2: SUB", stages: ["-", "IF", "ID", "EX (รับ Forwarding)", "MEM"] }
+      ],
+      unresolvedDesc: 'หากไม่มี Forwarding คำสั่ง I2 จะต้องถูก Stall ในสเตจ ID และแทรก Bubble 2 รอบสัญญาณนาฬิกา จนกว่า I1 จะจบสเตจ WB',
+      resolvedDesc: 'ใช้วงจร Forwarding (Bypassing) ดักจับผลลัพธ์จากปลายสเตจ EX ของ I1 แล้วส่งผ่านสายลัดไปยังอินพุตของสเตจ EX ของ I2 ทันที! ทำให้ไม่ต้อง Stall แม้แต่รอบเดียว',
+      resolutionName: 'Forwarding / Bypassing (การส่งต่อข้อมูลทางลัด)'
     },
-    'linear-vs-nonlinear': {
-      title: "เปรียบเทียบประเภทไปป์ไลน์: Linear Pipeline vs Non-Linear Pipeline",
-      subtitle: "ความแตกต่างระหว่างท่อตรงทิศทางเดียว กับท่อที่มี Feedback Loop และหลายเส้นทาง",
-      cards: [
-        {
-          name: "Linear Pipeline (แบบเป็นลำดับ)",
-          tag: "ทิศทางเดียว / CPU ทั่วไป",
-          badgeColor: "#0284c7",
-          features: [
-            { label: "ทิศทางการไหล", val: "ไหลไปข้างหน้าทิศทางเดียว (Unidirectional Flow) เป็นเส้นตรง" },
-            { label: "การใช้สเตจซ้ำ", val: "แต่ละสเตจถูกใช้งานเพียง 1 ครั้งต่อ 1 คำสั่ง ไม่มีการวนกลับ" },
-            { label: "การควบคุมจังหวะ", val: "เรียบง่ายและเป็นจังหวะสัญญาณนาฬิกาแน่นอน (Fixed Timing)" },
-            { label: "ความซับซ้อนของวงจร", val: "ต่ำ จัดการง่าย ไม่ต้องมี Reservation Table ควบคุม" },
-            { label: "การนำไปใช้งาน", val: "สถาปัตยกรรม CPU ทั่วไป เช่น MIPS, RISC-V, ARM, Intel Core" }
-          ],
-          pros: [
-            "ออกแบบและสร้างวงจรควบคุมได้ง่าย",
-            "ทำนายเวลาและลำดับการประมวลผลได้แน่นอน (Deterministic)",
-            "เหมาะอย่างยิ่งสำหรับชุดคำสั่งมาตรฐานของคอมพิวเตอร์"
-          ],
-          cons: [
-            "ขาดความยืดหยุ่นสำหรับงานคำนวณที่ต้องทำซ้ำหลายรอบ",
-            "คำสั่งที่ต้องการข้ามขั้นตอนยังต้องไหลผ่านสเตจนั้นไปโดยเปล่าประโยชน์"
-          ]
-        },
-        {
-          name: "Non-Linear Pipeline (แบบไม่เป็นลำดับ)",
-          tag: "ยืดหยุ่นสูง / DSP & สื่อผสม",
-          badgeColor: "#7c3aed",
-          features: [
-            { label: "ทิศทางการไหล", val: "มีวงจรย้อนกลับ (Feedback Loops) และหลายเส้นทางขนาน" },
-            { label: "การใช้สเตจซ้ำ", val: "สเตจเดิมสามารถถูกเรียกประมวลผลซ้ำได้หลายรอบใน 1 คำสั่ง" },
-            { label: "การควบคุมจังหวะ", val: "ซับซ้อนมาก ต้องมี Reservation Table และตารางจองฮาร์ดแวร์" },
-            { label: "ความซับซ้อนของวงจร", val: "สูงมาก มีวงจรสวิตช์และมัลติเพล็กเซอร์ควบคุมเส้นทาง" },
-            { label: "การนำไปใช้งาน", val: "ชิปประมวลผลสัญญาณดิจิทัล (DSP), Adaptive Image Processing" }
-          ],
-          pros: [
-            "มีความยืดหยุ่นสูงมาก รองรับงานคำนวณแบบพลวัต (Dynamic)",
-            "ประหยัดพื้นที่ฮาร์ดแวร์โดยใช้สเตจคำนวณเดิมวนซ้ำได้",
-            "มีประสิทธิภาพสูงมากสำหรับอัลกอริทึมทางคณิตศาสตร์เฉพาะทาง"
-          ],
-          cons: [
-            "วงจรควบคุมและการจัดลำดับเวลาซับซ้อนมาก",
-            "เสี่ยงต่อการเกิดการชนกันของคำสั่งในสเตจ (Internal Collisions)"
-          ]
-        }
-      ]
+    loaduse: {
+      id: 'loaduse',
+      title: 'Load-Use Data Hazard (คำสั่ง LOAD ตามด้วยคำสั่งใช้ข้อมูล)',
+      badge: 'Data Hazard',
+      badgeClass: 'data-hazard',
+      codeSnippet: `I1: LW  R1, 0(R2)     # โหลดข้อมูลจาก RAM เข้า R1 (ข้อมูลพร้อมหลังสเตจ MEM)
+I2: ADD R3, R1, R4    # ต้องการนำค่า R1 ไปบวกทันทีในสเตจ EX`,
+      cause: 'คำสั่ง LW จะได้ข้อมูลจริงจาก RAM หลังจากสิ้นสุดสเตจ MEM เท่านั้น ไม่สามารถ Forward ย้อนอดีตไปให้สเตจ EX ของ I2 ในรอบเดียวกันได้',
+      unresolvedCycles: [
+        { inst: "I1: LW",  stages: ["IF", "ID", "EX", "MEM", "WB", "-"] },
+        { inst: "I2: ADD", stages: ["-", "IF", "ID(รอ)", "Bubble", "EX", "MEM"] }
+      ],
+      resolvedCycles: [
+        { inst: "I1: LW",  stages: ["IF", "ID", "EX", "MEM (Data พร้อม)", "WB"] },
+        { inst: "I2: ADD", stages: ["-", "IF", "ID", "Bubble (Stall 1 รอบ)", "EX (รับ Forward)"] }
+      ],
+      unresolvedDesc: 'หากไม่มีวงจร Forwarding คำสั่ง ADD จะต้องหยุดรอถึง 2 รอบสัญญาณนาฬิกาจนกว่า LW จะผ่านสเตจ WB',
+      resolvedDesc: 'ฮาร์ดแวร์แทรก Stall (Bubble) 1 รอบในสเตจ EX เพื่อรอให้ LW จบสเตจ MEM จากนั้นจึง Forward ข้อมูลจาก MEM/WB ไปยังสเตจ EX ของ ADD ทันที (เสียเพียง 1 cycle)',
+      resolutionName: 'Stall 1 Cycle + Forwarding จากสเตจ MEM'
     },
-    'stalling-vs-forwarding': {
-      title: "เปรียบเทียบเทคนิคแก้ Data Hazard: Stalling (Bubble) vs Forwarding (Bypassing)",
-      subtitle: "การหน่วงเวลาคำสั่งด้วย NOP แลกกับความง่าย เทียบกับการเดินสายฮาร์ดแวร์ลัดวงจร",
-      cards: [
-        {
-          name: "Stalling / Bubble (การหยุดรอ)",
-          tag: "ง่าย / เสียรอบเวลา",
-          badgeColor: "#dc2626",
-          features: [
-            { label: "กลไกการทำงาน", val: "แทรกคำสั่งว่าง (NOP/Bubble) หน่วงเวลาคำสั่งที่ต้องรอ" },
-            { label: "ความต้องการฮาร์ดแวร์", val: "ต่ำมาก ไม่ต้องเพิ่มสายสัญญาณส่งต่อข้อมูลพิเศษ" },
-            { label: "ผลต่อ Clock Cycles", val: "สูญเสีย 1-2 รอบสัญญาณนาฬิกา (Stall Penalty) ต่อ Hazard" },
-            { label: "ผลกระทบต่อ Throughput", val: "ทำให้ Throughput และความเร็วโดยรวมลดลงอย่างเห็นได้ชัด" },
-            { label: "การนำไปใช้", val: "กรณี Load-Use Data Hazard ที่หลีกเลี่ยงไม่ได้ หรือ CPU พื้นฐาน" }
-          ],
-          pros: [
-            "ฮาร์ดแวร์เรียบง่าย ไม่เพิ่มขนาดพื้นที่ชิปหรือสายสัญญาณ",
-            "ไม่เพิ่มความซับซ้อนในการคำนวณ Critical Path ของ ALU"
-          ],
-          cons: [
-            "สูญเสียรอบสัญญาณนาฬิกาไปกับการรอคอยโดยเปล่าประโยชน์",
-            "ทำให้ค่าเฉลี่ย Cycles Per Instruction (CPI) สูงขึ้น"
-          ]
-        },
-        {
-          name: "Forwarding / Bypassing (การส่งต่อข้อมูล)",
-          tag: "เร็วที่สุด / ฮาร์ดแวร์ซับซ้อน",
-          badgeColor: "#059669",
-          features: [
-            { label: "กลไกการทำงาน", val: "ดึงผลลัพธ์จากปลายสเตจ EX/MEM ส่งตรงเข้าทางเข้า ALU ทันที" },
-            { label: "ความต้องการฮาร์ดแวร์", val: "สูง ต้องเพิ่มวงจร Bypass MUX และสาย Bus เชื่อมต่อพิเศษ" },
-            { label: "ผลต่อ Clock Cycles", val: "กำจัดรอบการหยุดรอได้ 100% สำหรับคำสั่งประเภท ALU" },
-            { label: "ผลกระทบต่อ Throughput", val: "รักษา Throughput ให้อยู่ในระดับสูงสุดใกล้เคียง 1 IPC" },
-            { label: "การนำไปใช้", val: "หน่วยประมวลผล RISC, MIPS, ARM, x86 ยุคใหม่ทุกรุ่น" }
-          ],
-          pros: [
-            "ประสิทธิภาพการประมวลผลสูงสุด ไม่มีการเสียรอบการรอ",
-            "คำสั่งถัดไปสามารถเริ่มคำนวณได้ทันทีโดยไม่ต้องรอเขียน Register File"
-          ],
-          cons: [
-            "เพิ่มขนาดพื้นที่ซิลิคอนและการใช้พลังงานไฟฟ้าในชิป",
-            "วงจรมัลติเพล็กเซอร์หน้า ALU อาจเพิ่มความหน่วงของสเตจ EX เล็กน้อย"
-          ]
-        }
-      ]
+    structural: {
+      id: 'structural',
+      title: 'Structural Hazard: แย่งพอร์ตหน่วยความจำ (Single-Port Memory)',
+      badge: 'Structural Hazard',
+      badgeClass: 'structural-hazard',
+      codeSnippet: `I1: LW R1, 100(R2)    # ในรอบที่ 4: สเตจ MEM กำลังอ่านข้อมูลจาก RAM
+I4: ADD R5, R6, R7    # ในรอบที่ 4: สเตจ IF กำลังต้องการดึงคำสั่งจาก RAM เดียวกัน`,
+      cause: 'สถาปัตยกรรมแบบ Von Neumann มีพอร์ตหน่วยความจำร่วมกันเพียงชุดเดียว ทำให้คำสั่ง I1 (อ่านข้อมูลใน MEM) ชนกับคำสั่ง I4 (ดึงคำสั่งใน IF) ในรอบที่ 4',
+      unresolvedCycles: [
+        { inst: "I1: LW",  stages: ["IF", "ID", "EX", "MEM (ใช้ RAM)", "WB"] },
+        { inst: "I4: ADD", stages: ["-", "-", "-", "IF (ถูกชน! ต้อง Stall)", "IF จริง"] }
+      ],
+      resolvedCycles: [
+        { inst: "I1: LW",  stages: ["IF", "ID", "EX", "MEM (เข้า Data Cache)", "WB"] },
+        { inst: "I4: ADD", stages: ["-", "-", "-", "IF (เข้า Inst Cache)", "ID"] }
+      ],
+      unresolvedDesc: 'พอร์ตหน่วยความจำเดี่ยวไม่สามารถรองรับการอ่าน 2 จุดพร้อมกัน ทำให้คำสั่ง I4 ต้องหยุดรอ (Stall 1 รอบ) ให้ I1 ใช้พอร์ตเสร็จก่อน',
+      resolvedDesc: 'ใช้สถาปัตยกรรมแบบ Harvard Architecture โดยแยกหน่วยความจำแคชออกเป็น Instruction Cache (I-Cache) และ Data Cache (D-Cache) ทำให้ IF และ MEM เข้าถึงได้พร้อมกัน 100%',
+      resolutionName: 'Harvard Architecture (แยก I-Cache และ D-Cache)'
+    },
+    control: {
+      id: 'control',
+      title: 'Control Hazard: คำสั่งเงื่อนไขกระโดด (Branch Taken / Penalty)',
+      badge: 'Control Hazard',
+      badgeClass: 'control-hazard',
+      codeSnippet: `I1: BEQZ R1, TARGET   # ตรวจสอบเงื่อนไขในสเตจ ID/EX (ผลลัพธ์: กระโดดจริง!)
+I2: ADD  R2, R3, R4   # คำสั่งถัดไปถูก Pre-fetch เข้ามาใน IF
+I3: SUB  R5, R6, R7   # คำสั่งถัดไปถูก Pre-fetch เข้ามาใน IF`,
+      cause: 'ซีพียูดึงคำสั่ง I2 และ I3 เข้ามาล่วงหน้า (Pre-fetch) แต่เมื่อ I1 ประมวลผลเสร็จพบว่าเงื่อนไขเป็นจริง (Branch Taken) ต้องกระโดดไป TARGET ทำให้คำสั่ง I2 และ I3 กลายเป็นคำสั่งที่ผิด',
+      unresolvedCycles: [
+        { inst: "I1: BEQZ", stages: ["IF", "ID", "EX (ตัดสิน: กระโดด!)", "MEM", "WB"] },
+        { inst: "I2: ADD",  stages: ["-", "IF", "ID (ล้างทิ้ง Flush!)", "-", "-"] },
+        { inst: "TARGET",   stages: ["-", "-", "-", "IF (เริ่มดึงใหม่)", "ID"] }
+      ],
+      resolvedCycles: [
+        { inst: "I1: BEQZ", stages: ["IF", "ID (ทำนาย: Taken)", "EX (ตรงตามที่ทาย)", "MEM", "WB"] },
+        { inst: "TARGET",   stages: ["-", "IF (ดึงเป้าหมายทันที)", "ID", "EX", "MEM"] }
+      ],
+      unresolvedDesc: 'ไม่มีการทำนาย (เดาว่าไม่กระโดด) เมื่อกระโดดจริง คำสั่งที่ดึงเข้ามาใน IF และ ID ต้องถูก Flush ล้างทิ้งทั้งหมด เสียค่าปรับ (Penalty 2 รอบสัญญาณนาฬิกา)',
+      resolvedDesc: 'ใช้วงจร Dynamic Branch Prediction ร่วมกับ Branch Target Buffer (BTB) คาดเดาว่าเงื่อนไขจะกระโดด (Taken) ทำให้ดึงคำสั่งที่ TARGET เข้ามาได้ตั้งแต่รอบที่ 2 โดยไม่เสียเวลาเลย!',
+      resolutionName: 'Dynamic Branch Prediction + Branch Target Buffer'
     }
   };
 
-  const activeCategory = comparisonData[selectedCategory];
+  const current = hazards[selectedHazard];
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
-      <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-          <Sliders size={28} color="#4f46e5" />
-          <span>เครื่องมือเปรียบเทียบสถาปัตยกรรมและเทคโนโลยีไปป์ไลน์ (Pipeline Comparison Tool)</span>
-        </h2>
-        <p style={{ color: '#64748b', fontSize: '14.5px', marginTop: '6px' }}>
-          เปรียบเทียบความแตกต่าง จุดเด่น จุดด้อย และการประยุกต์ใช้งานในระบบสถาปัตยกรรมคอมพิวเตอร์
-        </p>
-      </div>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 16px' }}>
+      <div className="sim-container">
+        <div className="sim-header">
+          <span className="module-badge">HAZARD ANALYZER</span>
+          <h2 style={{ marginTop: '8px', fontSize: '24px', fontWeight: '800' }}>
+            เครื่องมือวิเคราะห์ Hazards และการแก้ปัญหา (Pipeline Hazard & Resolution Analyzer)
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '14.5px' }}>
+            เจาะลึก 3 รูปแบบความเสี่ยงของไปป์ไลน์: Data Hazard, Structural Hazard, Control Hazard และเปรียบเทียบผลลัพธ์ก่อน-หลังแก้ไข
+          </p>
+        </div>
 
-      {/* Category Selection Tabs */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', marginBottom: '28px' }}>
-        {[
-          { id: 'single-vs-pipeline', label: 'Single-Cycle vs Pipeline CPU' },
-          { id: 'linear-vs-nonlinear', label: 'Linear vs Non-Linear Pipeline' },
-          { id: 'stalling-vs-forwarding', label: 'Stalling (Bubble) vs Forwarding' }
-        ].map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => setSelectedCategory(cat.id)}
-            style={{
-              padding: '10px 20px',
-              borderRadius: '999px',
-              fontSize: '13.5px',
-              fontWeight: '700',
-              cursor: 'pointer',
-              border: selectedCategory === cat.id ? '2px solid #4f46e5' : '1px solid #cbd5e1',
-              background: selectedCategory === cat.id ? '#4f46e5' : '#ffffff',
-              color: selectedCategory === cat.id ? '#ffffff' : '#475569',
-              boxShadow: selectedCategory === cat.id ? '0 4px 12px rgba(79, 70, 229, 0.25)' : 'none',
-              transition: 'all 0.15s ease'
-            }}
-          >
-            {cat.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Comparison Header */}
-      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 20px', marginBottom: '24px', textAlign: 'center' }}>
-        <h3 style={{ fontSize: '17px', fontWeight: '800', color: '#1e293b' }}>{activeCategory.title}</h3>
-        <p style={{ fontSize: '13.5px', color: '#64748b', marginTop: '4px' }}>{activeCategory.subtitle}</p>
-      </div>
-
-      {/* Side-by-Side Comparison Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '24px' }}>
-        {activeCategory.cards.map((card, cIdx) => (
-          <div
-            key={cIdx}
-            style={{
-              background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              borderRadius: '16px',
-              overflow: 'hidden',
-              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            {/* Card Header */}
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', background: '#faf5ff' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '12px', fontWeight: '800', color: card.badgeColor, background: '#ffffff', padding: '3px 10px', borderRadius: '999px', border: `1px solid ${card.badgeColor}40` }}>
-                  {card.tag}
-                </span>
+        {/* Hazard Scenario Selector Tabs */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginBottom: '24px' }}>
+          {Object.values(hazards).map((h) => (
+            <button
+              key={h.id}
+              onClick={() => setSelectedHazard(h.id)}
+              style={{
+                padding: '14px',
+                borderRadius: 'var(--radius-md)',
+                border: selectedHazard === h.id ? '2px solid var(--indigo-primary)' : '1px solid var(--border-light)',
+                background: selectedHazard === h.id ? '#eef2ff' : 'var(--bg-surface)',
+                textAlign: 'left',
+                boxShadow: selectedHazard === h.id ? 'var(--shadow-md)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span className={`hazard-card ${h.badgeClass}`} style={{ display: 'inline-block', padding: '2px 8px', fontSize: '11px', fontWeight: '700', borderRadius: '4px', margin: '0 0 6px 0', border: 'none' }}>
+                {h.badge}
+              </span>
+              <div style={{ fontSize: '13.5px', fontWeight: '700', color: selectedHazard === h.id ? 'var(--indigo-primary)' : 'var(--text-primary)', lineHeight: '1.4' }}>
+                {h.title}
               </div>
-              <h4 style={{ fontSize: '18px', fontWeight: '800', color: '#1e293b' }}>{card.name}</h4>
+            </button>
+          ))}
+        </div>
+
+        {/* Active Hazard Detail Header */}
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '20px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <ShieldAlert size={20} color="#b45309" />
+              {current.title}
+            </h3>
+
+            {/* Toggle Resolution Button */}
+            <div style={{ display: 'flex', gap: '8px', background: '#f1f5f9', padding: '4px', borderRadius: 'var(--radius-full)' }}>
+              <button
+                onClick={() => setResolutionMode('unresolved')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 'var(--radius-full)',
+                  fontSize: '12.5px',
+                  fontWeight: '700',
+                  background: resolutionMode === 'unresolved' ? 'var(--rose-danger)' : 'transparent',
+                  color: resolutionMode === 'unresolved' ? '#ffffff' : 'var(--text-secondary)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                ⚠️ ก่อนแก้ (Unresolved / Stall)
+              </button>
+              <button
+                onClick={() => setResolutionMode('resolved')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 'var(--radius-full)',
+                  fontSize: '12.5px',
+                  fontWeight: '700',
+                  background: resolutionMode === 'resolved' ? 'var(--emerald-success)' : 'transparent',
+                  color: resolutionMode === 'resolved' ? '#ffffff' : 'var(--text-secondary)',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                ✅ หลังแก้ ({current.resolutionName.split(' ')[0]})
+              </button>
+            </div>
+          </div>
+
+          {/* Code snippet & Cause breakdown */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                ตัวอย่างคำสั่งที่เกิดปัญหา:
+              </div>
+              <div className="code-block" style={{ margin: 0, padding: '12px 16px' }}>
+                <pre style={{ margin: 0 }}>{current.codeSnippet}</pre>
+              </div>
             </div>
 
-            {/* Feature List */}
-            <div style={{ padding: '20px 24px', flex: 1 }}>
-              <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>
-                คุณลักษณะทางสถาปัตยกรรม (Architectural Features):
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', color: '#b45309', marginBottom: '6px' }}>
+                สาเหตุของปัญหา (Root Cause):
               </div>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {card.features.map((f, fIdx) => (
-                  <li key={fIdx} style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', paddingBottom: '8px', borderBottom: '1px solid #f1f5f9' }}>
-                    <span style={{ color: '#64748b', fontWeight: '600' }}>{f.label}:</span>
-                    <span style={{ color: '#1e293b', fontWeight: '700', marginTop: '2px' }}>{f.val}</span>
-                  </li>
-                ))}
-              </ul>
+              <p style={{ fontSize: '13.5px', color: 'var(--text-secondary)', lineHeight: '1.6', margin: 0 }}>
+                {current.cause}
+              </p>
+            </div>
+          </div>
 
-              {/* Pros */}
-              <div style={{ marginTop: '18px' }}>
-                <div style={{ fontSize: '12px', fontWeight: '700', color: '#16a34a', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Check size={14} /> จุดเด่นและข้อได้เปรียบ (Advantages):
-                </div>
-                <ul style={{ paddingLeft: '18px', fontSize: '12.5px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {card.pros.map((p, pIdx) => (
-                    <li key={pIdx}>{p}</li>
-                  ))}
-                </ul>
-              </div>
+          {/* Pipeline Timing Matrix for Current State */}
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Cpu size={16} color="var(--indigo-primary)" />
+              ผังการประมวลผลในไปป์ไลน์ ({resolutionMode === 'resolved' ? 'สภาวะหลังใช้เทคนิคแก้ไข' : 'สภาวะที่มีการหยุดชะงัก'}):
+            </div>
 
-              {/* Cons */}
-              <div style={{ marginTop: '16px' }}>
-                <div style={{ fontSize: '12px', fontWeight: '700', color: '#dc2626', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <X size={14} /> ข้อจำกัดและประเด็นที่ต้องแลก (Trade-offs):
-                </div>
-                <ul style={{ paddingLeft: '18px', fontSize: '12.5px', color: '#334155', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  {card.cons.map((c, cIdx) => (
-                    <li key={cIdx}>{c}</li>
+            <div className="table-responsive" style={{ margin: '8px 0 16px 0' }}>
+              <table className="modern-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '180px' }}>คำสั่ง</th>
+                    <th className="cell-center">Cycle 1</th>
+                    <th className="cell-center">Cycle 2</th>
+                    <th className="cell-center">Cycle 3</th>
+                    <th className="cell-center">Cycle 4</th>
+                    <th className="cell-center">Cycle 5</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(resolutionMode === 'resolved' ? current.resolvedCycles : current.unresolvedCycles).map((row, rIdx) => (
+                    <tr key={rIdx}>
+                      <td style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{row.inst}</td>
+                      {row.stages.slice(0, 5).map((st, sIdx) => {
+                        let badgeBg = '#f1f5f9';
+                        let badgeColor = '#475569';
+                        if (st.includes('IF')) { badgeBg = '#e0f2fe'; badgeColor = '#0369a1'; }
+                        else if (st.includes('ID')) { badgeBg = '#e0e7ff'; badgeColor = '#4338ca'; }
+                        else if (st.includes('EX')) { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+                        else if (st.includes('MEM')) { badgeBg = '#ffe4e6'; badgeColor = '#be123c'; }
+                        else if (st.includes('WB')) { badgeBg = '#d1fae5'; badgeColor = '#047857'; }
+                        else if (st.includes('Bubble') || st.includes('รอ') || st.includes('Flush')) {
+                          badgeBg = '#fee2e2'; badgeColor = '#991b1b';
+                        }
+
+                        return (
+                          <td key={sIdx} className="cell-center">
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '4px 10px',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                background: badgeBg,
+                                color: badgeColor,
+                                border: '1px solid rgba(0,0,0,0.06)'
+                              }}
+                            >
+                              {st}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
                   ))}
-                </ul>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Status Description Callout */}
+            <div
+              className={`callout ${resolutionMode === 'resolved' ? 'callout-success' : 'callout-warning'}`}
+              style={{ margin: 0 }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                {resolutionMode === 'resolved' ? (
+                  <CheckCircle2 size={18} color="var(--emerald-success)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                ) : (
+                  <AlertTriangle size={18} color="var(--amber-warning)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                )}
+                <div>
+                  <strong>{resolutionMode === 'resolved' ? 'ผลลัพธ์การแก้ไขด้วย ' + current.resolutionName : 'ผลกระทบเมื่อไม่ได้รับการแก้ไข:'}</strong>
+                  <p style={{ marginTop: '4px', fontSize: '13.5px', lineHeight: '1.5' }}>
+                    {resolutionMode === 'resolved' ? current.resolvedDesc : current.unresolvedDesc}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );

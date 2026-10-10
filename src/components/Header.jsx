@@ -9,7 +9,7 @@ export default function Header({ activeTab, setActiveTab, searchQuery, setSearch
           <div className="logo-badge">CS 3106</div>
           <div className="title-group">
             <h1>บทที่ 8: การทำงานแบบไปป์ลายน์ (Pipeline)</h1>
-            <p className="desktop-only">วิชา 020413106 โครงสร้างระบบคอมพิวเตอร์ | ครอบคลุม 16 วัตถุประสงค์เชิงพฤติกรรม</p>
+            <p className="desktop-only">Computer System Organization | สรุปเนื้อหาและคลังข้อสอบครบ 16 วัตถุประสงค์</p>
           </div>
         </div>
 
@@ -18,7 +18,7 @@ export default function Header({ activeTab, setActiveTab, searchQuery, setSearch
             <Search size={16} color="#64748b" />
             <input
               type="text"
-              placeholder="ค้นหาคำศัพท์ (เช่น IF, ID, EX, MEM, WB, Hazard, Forwarding, Stalling, Speedup)..."
+              placeholder="ค้นหาคำศัพท์ (เช่น IF, ID, RAW Hazard, Throughput, Forwarding)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="search-input"
@@ -26,7 +26,7 @@ export default function Header({ activeTab, setActiveTab, searchQuery, setSearch
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                style={{ fontSize: '12px', color: '#94a3b8', background: '#cbd5e1', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', cursor: 'pointer' }}
+                style={{ fontSize: '12px', color: '#94a3b8', background: '#cbd5e1', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 ✕
               </button>
@@ -59,7 +59,7 @@ export default function Header({ activeTab, setActiveTab, searchQuery, setSearch
             onClick={() => setActiveTab('cycle-sim')}
           >
             <Cpu size={18} />
-            <span>จำลอง 5-Stage Pipeline</span>
+            <span>จำลองไปป์ไลน์ 5 สเตจ</span>
           </button>
 
           <button
@@ -67,7 +67,7 @@ export default function Header({ activeTab, setActiveTab, searchQuery, setSearch
             onClick={() => setActiveTab('address-calc')}
           >
             <Calculator size={18} />
-            <span>คำนวณ Speedup / Throughput</span>
+            <span>คำนวณ Speedup</span>
           </button>
 
           <button
@@ -75,7 +75,7 @@ export default function Header({ activeTab, setActiveTab, searchQuery, setSearch
             onClick={() => setActiveTab('format-tool')}
           >
             <Sliders size={18} />
-            <span>เปรียบเทียบสถาปัตยกรรม CPU</span>
+            <span>วิเคราะห์ Hazards</span>
           </button>
 
           <button

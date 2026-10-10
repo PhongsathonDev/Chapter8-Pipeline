@@ -1,404 +1,373 @@
-import React, { useState, useMemo } from 'react';
-import { Play, Pause, RotateCcw, ArrowRight, ArrowLeft, CheckCircle2, AlertTriangle, Zap, ShieldAlert, Cpu } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Pause, RotateCcw, ArrowRight, ArrowLeft, CheckCircle2, Cpu, HardDrive, Zap, Info } from 'lucide-react';
 
 export default function CpuCycleSimulator() {
-  const samplePrograms = [
-    {
-      id: 'ideal',
-      name: '1. ชุดคำสั่งอิสระ (ไม่มี Hazard - ท่อไหลเต็ม 100%)',
-      desc: 'คำสั่ง 5 คำสั่งที่ไม่พึ่งพาข้อมูลกัน ไหลผ่านไปป์ไลน์ 5 สเตจอย่างราบรื่น ได้ Throughput เกือบ 1 IPC',
-      instructions: [
-        { id: 'I1', text: 'ADD R1, R2, R3', type: 'ALU', dest: 'R1', src: ['R2', 'R3'] },
-        { id: 'I2', text: 'SUB R4, R5, R6', type: 'ALU', dest: 'R4', src: ['R5', 'R6'] },
-        { id: 'I3', text: 'AND R7, R8, R9', type: 'ALU', dest: 'R7', src: ['R8', 'R9'] },
-        { id: 'I4', text: 'OR R10, R11, R12', type: 'ALU', dest: 'R10', src: ['R11', 'R12'] },
-        { id: 'I5', text: 'XOR R13, R14, R15', type: 'ALU', dest: 'R13', src: ['R14', 'R15'] }
-      ],
-      mode: 'ideal'
-    },
-    {
-      id: 'stall',
-      name: '2. เกิด Data Hazard (ใช้การหยุดรอ Stalling / Bubble)',
-      desc: 'I2 ต้องการใช้ R1 จาก I1 ทำให้ I2 ต้องหยุดรอ (Stall 2 รอบ) จนกว่า I1 จะเขียนค่ากลับลง Register File ในสเตจ WB',
-      instructions: [
-        { id: 'I1', text: 'ADD R1, R2, R3', type: 'ALU', dest: 'R1', src: ['R2', 'R3'] },
-        { id: 'I2', text: 'SUB R4, R1, R5', type: 'ALU', dest: 'R4', src: ['R1', 'R5'] },
-        { id: 'I3', text: 'AND R7, R8, R9', type: 'ALU', dest: 'R7', src: ['R8', 'R9'] },
-        { id: 'I4', text: 'OR R10, R4, R12', type: 'ALU', dest: 'R10', src: ['R4', 'R12'] }
-      ],
-      mode: 'stall'
-    },
-    {
-      id: 'forwarding',
-      name: '3. เกิด Data Hazard (แก้ไขด้วยวงจรส่งต่อข้อมูล Forwarding)',
-      desc: 'ใช้วงจรบายพาสดึงค่า R1 จากปลายสเตจ EX ของ I1 ส่งตรงเข้าสู่สเตจ EX ของ I2 ทันที โดยไม่ต้องแทรก Bubble!',
-      instructions: [
-        { id: 'I1', text: 'ADD R1, R2, R3', type: 'ALU', dest: 'R1', src: ['R2', 'R3'] },
-        { id: 'I2', text: 'SUB R4, R1, R5', type: 'ALU', dest: 'R4', src: ['R1', 'R5'] },
-        { id: 'I3', text: 'AND R7, R4, R9', type: 'ALU', dest: 'R7', src: ['R4', 'R9'] },
-        { id: 'I4', text: 'OR R10, R7, R12', type: 'ALU', dest: 'R10', src: ['R7', 'R12'] }
-      ],
-      mode: 'forwarding'
-    }
-  ];
-
-  const [selectedProgId, setSelectedProgId] = useState('ideal');
   const [currentCycle, setCurrentCycle] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const activeProg = useMemo(() => {
-    return samplePrograms.find(p => p.id === selectedProgId) || samplePrograms[0];
-  }, [selectedProgId]);
+  const instructions = [
+    { id: 1, text: "I1: ADD R1, R2, R3", desc: "บวกค่า R2 กับ R3 แล้วเก็บลง R1" },
+    { id: 2, text: "I2: SUB R4, R5, R6", desc: "ลบค่า R6 จาก R5 แล้วเก็บลง R4" },
+    { id: 3, text: "I3: AND R7, R8, R9", desc: "AND บิต R8 กับ R9 แล้วเก็บลง R7" }
+  ];
 
-  // Precompute pipeline matrix (Clock Cycles 1 to 12)
-  const pipelineGrid = useMemo(() => {
-    const insts = activeProg.instructions;
-    const maxCycles = 10;
-    // Map of instruction id -> array of { cycle, stage }
-    const schedule = [];
+  // Pipeline stages: 1: IF, 2: ID, 3: EX, 4: MEM, 5: WB
+  const stages = [
+    { code: "IF", name: "Instruction Fetch", badgeClass: "if", color: "#0284c7" },
+    { code: "ID", name: "Instruction Decode", badgeClass: "id", color: "#4f46e5" },
+    { code: "EX", name: "Execute / ALU", badgeClass: "ex", color: "#d97706" },
+    { code: "MEM", name: "Memory Access", badgeClass: "mem", color: "#e11d48" },
+    { code: "WB", name: "Write Back", badgeClass: "wb", color: "#059669" }
+  ];
 
-    if (activeProg.mode === 'ideal') {
-      insts.forEach((inst, idx) => {
-        const start = idx + 1;
-        const stages = ['IF', 'ID', 'EX', 'MEM', 'WB'];
-        const row = { id: inst.id, text: inst.text, cells: {} };
-        stages.forEach((stg, sIdx) => {
-          row.cells[start + sIdx] = { stage: stg, isBubble: false };
-        });
-        schedule.push(row);
-      });
-    } else if (activeProg.mode === 'stall') {
-      // I1: 1:IF, 2:ID, 3:EX, 4:MEM, 5:WB
-      // I2: 2:IF, 3:ID, 4:Bubble, 5:Bubble, 6:EX, 7:MEM, 8:WB
-      // I3: 3:IF, 4:Stall(IF), 5:Stall(IF), 6:ID, 7:EX, 8:MEM, 9:WB
-      // I4: 7:IF, 8:Bubble, 9:Bubble, 10:ID, 11:EX
-      schedule.push({
-        id: 'I1', text: insts[0].text,
-        cells: { 1: { stage: 'IF' }, 2: { stage: 'ID' }, 3: { stage: 'EX' }, 4: { stage: 'MEM' }, 5: { stage: 'WB' } }
-      });
-      schedule.push({
-        id: 'I2', text: insts[1].text,
-        cells: { 2: { stage: 'IF' }, 3: { stage: 'ID' }, 4: { stage: 'Bubble', isBubble: true }, 5: { stage: 'Bubble', isBubble: true }, 6: { stage: 'EX' }, 7: { stage: 'MEM' }, 8: { stage: 'WB' } }
-      });
-      schedule.push({
-        id: 'I3', text: insts[2].text,
-        cells: { 3: { stage: 'IF' }, 6: { stage: 'ID' }, 7: { stage: 'EX' }, 8: { stage: 'MEM' }, 9: { stage: 'WB' } }
-      });
-      schedule.push({
-        id: 'I4', text: insts[3].text,
-        cells: { 7: { stage: 'IF' }, 8: { stage: 'Bubble', isBubble: true }, 9: { stage: 'Bubble', isBubble: true }, 10: { stage: 'ID' } }
-      });
-    } else if (activeProg.mode === 'forwarding') {
-      // With Forwarding, I2 does not need to stall! Forwarding happens EX -> EX!
-      insts.forEach((inst, idx) => {
-        const start = idx + 1;
-        const stages = ['IF', 'ID', 'EX', 'MEM', 'WB'];
-        const row = { id: inst.id, text: inst.text, cells: {} };
-        stages.forEach((stg, sIdx) => {
-          row.cells[start + sIdx] = { stage: stg, isForwarded: (idx > 0 && stg === 'EX') };
-        });
-        schedule.push(row);
-      });
+  // Pipeline grid matrix for 3 instructions across 7 cycles
+  // instruction i starts at cycle i (1-indexed)
+  const getStageForInst = (instIdx, cycle) => {
+    const stageIdx = cycle - instIdx; // 1 to 5
+    if (stageIdx >= 1 && stageIdx <= 5) {
+      return stages[stageIdx - 1];
     }
+    return null;
+  };
 
-    return { maxCycles, schedule };
-  }, [activeProg]);
+  const cycleDetails = {
+    1: {
+      title: "Clock Cycle 1: เริ่มต้นป้อนคำสั่งแรกเข้าสู่ไปป์ไลน์",
+      desc: "คำสั่ง I1 ถูกดึงจาก Instruction Memory ในสเตจ IF โดยใช้ค่าจาก PC ขณะที่สเตจอื่นๆ ยังคงว่างงาน",
+      activeCount: 1,
+      completedCount: 0,
+      activeStages: [
+        { stage: "IF", inst: "I1: ADD R1, R2, R3", action: "ดึงคำสั่ง ADD จาก Instruction Memory, คำนวณ PC = PC + 4" }
+      ],
+      buffers: {
+        "IF/ID": "เก็บคำสั่ง [ADD R1, R2, R3] และค่า PC+4 เตรียมส่งให้สเตจ ID",
+        "ID/EX": "ว่างงาน (ยังไม่มีคำสั่งส่งมอบ)",
+        "EX/MEM": "ว่างงาน (ยังไม่มีผลลัพธ์การคำนวณ)",
+        "MEM/WB": "ว่างงาน (ยังไม่มีข้อมูลเขียนกลับ)"
+      }
+    },
+    2: {
+      title: "Clock Cycle 2: เริ่มทำงานขนาน 2 คำสั่งพร้อมกัน",
+      desc: "คำสั่ง I1 เคลื่อนที่เข้าสู่สเตจ ID เพื่อถอดรหัสและอ่าน Register ในเวลาเดียวกันคำสั่ง I2 เริ่มเข้าสู่สเตจ IF",
+      activeCount: 2,
+      completedCount: 0,
+      activeStages: [
+        { stage: "ID", inst: "I1: ADD R1, R2, R3", action: "ถอดรหัส OpCode ADD, อ่านค่าจาก R2 และ R3 ใน Register File" },
+        { stage: "IF", inst: "I2: SUB R4, R5, R6", action: "ดึงคำสั่ง SUB จาก Instruction Memory, คำนวณ PC = PC + 4" }
+      ],
+      buffers: {
+        "IF/ID": "เก็บคำสั่ง [SUB R4, R5, R6] เพื่อส่งให้สเตจ ID ในรอบถัดไป",
+        "ID/EX": "เก็บค่าตัวถูกดำเนินการ R2, R3 และสัญญาณควบคุมสำหรับ ALU",
+        "EX/MEM": "ว่างงาน",
+        "MEM/WB": "ว่างงาน"
+      }
+    },
+    3: {
+      title: "Clock Cycle 3: ทำงานขนานพร้อมกัน 3 คำสั่งใน 3 สเตจ!",
+      desc: "คำสั่ง I1 กำลังคำนวณใน EX, คำสั่ง I2 กำลังถอดรหัสใน ID, และคำสั่ง I3 กำลังถูกดึงเข้ามาใน IF",
+      activeCount: 3,
+      completedCount: 0,
+      activeStages: [
+        { stage: "EX", inst: "I1: ADD R1, R2, R3", action: "ALU ดำเนินการบวกค่า (R2 + R3) ได้ผลลัพธ์ชั่วคราว" },
+        { stage: "ID", inst: "I2: SUB R4, R5, R6", action: "ถอดรหัส OpCode SUB, อ่านค่าจาก R5 และ R6" },
+        { stage: "IF", inst: "I3: AND R7, R8, R9", action: "ดึงคำสั่ง AND จาก Instruction Memory, คำนวณ PC = PC + 4" }
+      ],
+      buffers: {
+        "IF/ID": "เก็บคำสั่ง [AND R7, R8, R9] เตรียมส่งต่อสเตจ ID",
+        "ID/EX": "เก็บค่าตัวถูกดำเนินการ R5, R6 เตรียมคำนวณใน ALU",
+        "EX/MEM": "เก็บผลลัพธ์ ALU ของคำสั่ง I1 และส่งต่อสัญญาณควบคุม",
+        "MEM/WB": "ว่างงาน"
+      }
+    },
+    4: {
+      title: "Clock Cycle 4: คำสั่ง I1 เข้าสู่สเตจหน่วยความจำ",
+      desc: "คำสั่ง I1 อยู่ใน MEM (ส่งผ่านไป WB เนื่องจากไม่ต้องเข้าถึงแรม), คำสั่ง I2 อยู่ใน EX กำลังลบค่า, คำสั่ง I3 อยู่ใน ID",
+      activeCount: 3,
+      completedCount: 0,
+      activeStages: [
+        { stage: "MEM", inst: "I1: ADD R1, R2, R3", action: "คำสั่ง ADD ไม่มีการอ่านเขียนแรม จึงส่งผ่านผลลัพธ์ไปยัง WB" },
+        { stage: "EX", inst: "I2: SUB R4, R5, R6", action: "ALU คำนวณการลบ (R5 - R6) ได้ผลลัพธ์ชั่วคราว" },
+        { stage: "ID", inst: "I3: AND R7, R8, R9", action: "ถอดรหัส OpCode AND, อ่านค่าจาก R8 และ R9" }
+      ],
+      buffers: {
+        "IF/ID": "ว่างงาน (ดึงคำสั่งหมดแล้ว)",
+        "ID/EX": "เก็บค่า R8, R9 เพื่อเตรียมประมวลผลตรรกะในรอบถัดไป",
+        "EX/MEM": "เก็บผลลัพธ์การลบของคำสั่ง I2",
+        "MEM/WB": "เก็บผลลัพธ์บวกของคำสั่ง I1 พร้อมหมายเลขรีจิสเตอร์ปลายทาง R1"
+      }
+    },
+    5: {
+      title: "Clock Cycle 5: คำสั่งแรก (I1) เสร็จสิ้นสมบูรณ์ 100%!",
+      desc: "คำสั่ง I1 ทำการ Write Back เขียนผลลัพธ์ลง R1 เสร็จสิ้น, คำสั่ง I2 อยู่ใน MEM, คำสั่ง I3 อยู่ใน EX",
+      activeCount: 3,
+      completedCount: 1,
+      activeStages: [
+        { stage: "WB", inst: "I1: ADD R1, R2, R3", action: "เขียนผลลัพธ์ ALU กลับลงรีจิสเตอร์ R1 ใน Register File (เสร็จสมบูรณ์!)" },
+        { stage: "MEM", inst: "I2: SUB R4, R5, R6", action: "ส่งผ่านผลลัพธ์ไปยังสเตจถัดไป" },
+        { stage: "EX", inst: "I3: AND R7, R8, R9", action: "ALU ทำการเปรียบเทียบตรรกะบิต (R8 AND R9)" }
+      ],
+      buffers: {
+        "IF/ID": "ว่างงาน",
+        "ID/EX": "ว่างงาน",
+        "EX/MEM": "เก็บผลลัพธ์ AND ของคำสั่ง I3",
+        "MEM/WB": "เก็บผลลัพธ์ลบของ I2 เตรียมเขียนลง R4"
+      }
+    },
+    6: {
+      title: "Clock Cycle 6: คำสั่งที่ 2 (I2) เสร็จสิ้นตามมาอย่างต่อเนื่อง!",
+      desc: "คำสั่ง I2 เขียนผลลัพธ์ลง R4 ใน WB, คำสั่ง I3 อยู่ใน MEM พร้อมจะเสร็จในรอบถัดไป",
+      activeCount: 2,
+      completedCount: 2,
+      activeStages: [
+        { stage: "WB", inst: "I2: SUB R4, R5, R6", action: "เขียนผลลัพธ์การลบกลับลงรีจิสเตอร์ R4 ใน Register File (เสร็จสมบูรณ์!)" },
+        { stage: "MEM", inst: "I3: AND R7, R8, R9", action: "ส่งผ่านผลลัพธ์ AND เตรียมส่งมอบให้สเตจ WB" }
+      ],
+      buffers: {
+        "IF/ID": "ว่างงาน",
+        "ID/EX": "ว่างงาน",
+        "EX/MEM": "ว่างงาน",
+        "MEM/WB": "เก็บผลลัพธ์ AND เตรียมเขียนลง R7"
+      }
+    },
+    7: {
+      title: "Clock Cycle 7: คำสั่งที่ 3 (I3) เสร็จสิ้น ครบทั้ง 3 คำสั่ง!",
+      desc: "คำสั่ง I3 เขียนผลลัพธ์ลง R7 ใน WB สิ้นสุดการประมวลผลทั้ง 3 คำสั่งโดยใช้เวลารวมเพียง 7 รอบสัญญาณนาฬิกา",
+      activeCount: 1,
+      completedCount: 3,
+      activeStages: [
+        { stage: "WB", inst: "I3: AND R7, R8, R9", action: "เขียนผลลัพธ์กลับลงรีจิสเตอร์ R7 ใน Register File (เสร็จสมบูรณ์ทั้งหมด!)" }
+      ],
+      buffers: {
+        "IF/ID": "ว่างงาน",
+        "ID/EX": "ว่างงาน",
+        "EX/MEM": "ว่างงาน",
+        "MEM/WB": "เขียนเสร็จเรียบร้อย ไปป์ไลน์พร้อมรับคำสั่งชุดใหม่"
+      }
+    }
+  };
 
-  // Handle Play Timer
-  React.useEffect(() => {
-    let timer = null;
+  useEffect(() => {
+    let timer;
     if (isPlaying) {
       timer = setInterval(() => {
         setCurrentCycle(prev => {
-          if (prev >= pipelineGrid.maxCycles) {
+          if (prev >= 7) {
             setIsPlaying(false);
-            return prev;
+            return 7;
           }
           return prev + 1;
         });
-      }, 1200);
+      }, 1800);
     }
     return () => clearInterval(timer);
-  }, [isPlaying, pipelineGrid.maxCycles]);
+  }, [isPlaying]);
 
-  // Current active instructions in each stage
-  const activeInStages = useMemo(() => {
-    const result = { IF: null, ID: null, EX: null, MEM: null, WB: null, Bubbles: [] };
-    pipelineGrid.schedule.forEach(row => {
-      const cell = row.cells[currentCycle];
-      if (cell) {
-        if (cell.isBubble) {
-          result.Bubbles.push(row.id);
-        } else if (result[cell.stage] !== undefined) {
-          result[cell.stage] = { id: row.id, text: row.text, isForwarded: cell.isForwarded };
-        }
-      }
-    });
-    return result;
-  }, [pipelineGrid, currentCycle]);
-
-  // Metrics
-  const completedCount = useMemo(() => {
-    let count = 0;
-    pipelineGrid.schedule.forEach(row => {
-      Object.entries(row.cells).forEach(([cyc, cell]) => {
-        if (parseInt(cyc, 10) <= currentCycle && cell.stage === 'WB') {
-          count++;
-        }
-      });
-    });
-    return count;
-  }, [pipelineGrid, currentCycle]);
-
-  const ipc = currentCycle > 0 ? (completedCount / currentCycle).toFixed(2) : '0.00';
+  const currentInfo = cycleDetails[currentCycle] || cycleDetails[1];
 
   return (
-    <div className="sim-container" style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
-      <div className="sim-header" style={{ textAlign: 'center', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-          <Cpu size={28} color="#4f46e5" />
-          <span>จำลองการทำงานแบบไปป์ไลน์ 5 สเตจ (5-Stage Pipeline Simulator)</span>
-        </h2>
-        <p style={{ color: '#64748b', fontSize: '14.5px', marginTop: '6px' }}>
-          สำรวจการเคลื่อนที่ของคำสั่งผ่านสเตจ IF ➔ ID ➔ EX ➔ MEM ➔ WB และการจัดการปัญหา Hazards
-        </p>
-      </div>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 16px' }}>
+      <div className="sim-container">
+        <div className="sim-header">
+          <span className="module-badge">INTERACTIVE SIMULATOR</span>
+          <h2 style={{ marginTop: '8px', fontSize: '24px', fontWeight: '800' }}>
+            จำลองการทำงานไปป์ไลน์ 5 สเตจ (5-Stage Pipeline Cycle Simulator)
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '6px', fontSize: '14.5px' }}>
+            ทดลองจำลองลำดับสัญญาณนาฬิกา (Clock Cycle 1-7) เพื่อสังเกตการประมวลผลคำสั่งแบบขนานและการส่งต่อข้อมูลผ่านบัฟเฟอร์
+          </p>
+        </div>
 
-      {/* Program Selector */}
-      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 20px', marginBottom: '24px' }}>
-        <label style={{ fontSize: '13px', fontWeight: '700', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: '10px' }}>
-          เลือกสถานการณ์จำลอง (Simulation Scenario):
-        </label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
-          {samplePrograms.map(prog => (
+        {/* Control Bar */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', margin: '20px 0', flexWrap: 'wrap' }}>
+          <button
+            className="btn-secondary"
+            disabled={currentCycle === 1}
+            onClick={() => setCurrentCycle(prev => Math.max(1, prev - 1))}
+            style={{ opacity: currentCycle === 1 ? 0.5 : 1 }}
+          >
+            <ArrowLeft size={16} /> รอบก่อนหน้า
+          </button>
+
+          <button
+            className="btn-primary"
+            onClick={() => setIsPlaying(!isPlaying)}
+            style={{ minWidth: '140px' }}
+          >
+            {isPlaying ? <><Pause size={16} /> หยุดชั่วคราว</> : <><Play size={16} /> เล่นอัตโนมัติ</>}
+          </button>
+
+          <button
+            className="btn-secondary"
+            disabled={currentCycle === 7}
+            onClick={() => setCurrentCycle(prev => Math.min(7, prev + 1))}
+            style={{ opacity: currentCycle === 7 ? 0.5 : 1 }}
+          >
+            รอบถัดไป <ArrowRight size={16} />
+          </button>
+
+          <button
+            className="btn-secondary"
+            onClick={() => { setCurrentCycle(1); setIsPlaying(false); }}
+            title="รีเซ็ตกลับไปรอบที่ 1"
+          >
+            <RotateCcw size={16} /> รีเซ็ต
+          </button>
+        </div>
+
+        {/* Cycle Selector Buttons (1 to 7) */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+          {[1, 2, 3, 4, 5, 6, 7].map(c => (
             <button
-              key={prog.id}
-              onClick={() => {
-                setSelectedProgId(prog.id);
-                setCurrentCycle(1);
-                setIsPlaying(false);
-              }}
+              key={c}
+              onClick={() => { setCurrentCycle(c); setIsPlaying(false); }}
               style={{
-                textAlign: 'left',
-                padding: '14px 16px',
-                borderRadius: '10px',
-                border: selectedProgId === prog.id ? '2px solid #4f46e5' : '1px solid #cbd5e1',
-                background: selectedProgId === prog.id ? '#eef2ff' : '#ffffff',
-                cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '13px',
+                fontWeight: '700',
+                border: currentCycle === c ? '2px solid var(--indigo-primary)' : '1px solid var(--border-light)',
+                background: currentCycle === c ? 'var(--indigo-primary)' : 'var(--bg-surface)',
+                color: currentCycle === c ? '#ffffff' : 'var(--text-secondary)',
+                boxShadow: currentCycle === c ? '0 2px 8px rgba(79, 70, 229, 0.3)' : 'none',
+                transition: 'all 0.2s ease'
               }}
             >
-              <div style={{ fontWeight: '700', fontSize: '14px', color: selectedProgId === prog.id ? '#4338ca' : '#1e293b', marginBottom: '4px' }}>
-                {prog.name}
-              </div>
-              <div style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.4' }}>
-                {prog.desc}
-              </div>
+              Cycle {c}
             </button>
           ))}
         </div>
-      </div>
 
-      {/* Play Controls & Cycle Indicator */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 24px', marginBottom: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button
-            onClick={() => setCurrentCycle(prev => Math.max(1, prev - 1))}
-            disabled={currentCycle <= 1}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: currentCycle <= 1 ? '#f1f5f9' : '#ffffff', cursor: currentCycle <= 1 ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px', color: '#475569' }}
-          >
-            <ArrowLeft size={16} /> ย้อน 1 รอบ
-          </button>
-
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '8px', border: 'none', background: isPlaying ? '#ea580c' : '#4f46e5', color: '#ffffff', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}
-          >
-            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
-            <span>{isPlaying ? 'หยุดชั่วคราว' : 'เล่นอัตโนมัติ'}</span>
-          </button>
-
-          <button
-            onClick={() => setCurrentCycle(prev => Math.min(pipelineGrid.maxCycles, prev + 1))}
-            disabled={currentCycle >= pipelineGrid.maxCycles}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', background: currentCycle >= pipelineGrid.maxCycles ? '#f1f5f9' : '#ffffff', cursor: currentCycle >= pipelineGrid.maxCycles ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '13px', color: '#475569' }}
-          >
-            <span>ถัดไป 1 รอบ</span> <ArrowRight size={16} />
-          </button>
-
-          <button
-            onClick={() => { setCurrentCycle(1); setIsPlaying(false); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', cursor: 'pointer', fontSize: '13px', color: '#64748b' }}
-          >
-            <RotateCcw size={15} /> รีเซ็ต
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>รอบสัญญาณนาฬิกา</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#4f46e5' }}>Cycle {currentCycle} / {pipelineGrid.maxCycles}</div>
-          </div>
-          <div style={{ width: '1px', height: '36px', background: '#e2e8f0' }} />
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>คำสั่งเสร็จสิ้น</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#16a34a' }}>{completedCount} คำสั่ง</div>
-          </div>
-          <div style={{ width: '1px', height: '36px', background: '#e2e8f0' }} />
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '700', textTransform: 'uppercase' }}>Throughput (IPC)</div>
-            <div style={{ fontSize: '22px', fontWeight: '800', color: '#0284c7' }}>{ipc} IPC</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Active Stages Visual Cards */}
-      <div style={{ marginBottom: '28px' }}>
-        <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#334155', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>สถานะของฮาร์ดแวร์ในแต่ละสเตจ ณ รอบ Clock Cycle ที่ {currentCycle}:</span>
-        </h4>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-          {[
-            { stage: 'IF', name: 'Fetch (ดึงคำสั่ง)', icon: '📥', color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd' },
-            { stage: 'ID', name: 'Decode (ถอดรหัส)', icon: '🧠', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-            { stage: 'EX', name: 'Execute (คำนวณ ALU)', icon: '➕', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
-            { stage: 'MEM', name: 'Memory (หน่วยความจำ)', icon: '💾', color: '#7c3aed', bg: '#faf5ff', border: '#e9d5ff' },
-            { stage: 'WB', name: 'Write Back (เขียนกลับ)', icon: '📝', color: '#e11d48', bg: '#fff1f2', border: '#fecdd3' }
-          ].map(s => {
-            const active = activeInStages[s.stage];
-            return (
-              <div
-                key={s.stage}
-                style={{
-                  background: active ? s.bg : '#f8fafc',
-                  border: active ? `2px solid ${s.color}` : '1px solid #e2e8f0',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: active ? '0 4px 12px rgba(0,0,0,0.06)' : 'none'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: s.color, background: 'rgba(255,255,255,0.8)', padding: '2px 8px', borderRadius: '4px' }}>
-                    {s.stage}
-                  </span>
-                  <span style={{ fontSize: '18px' }}>{s.icon}</span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600', marginBottom: '8px' }}>
-                  {s.name}
-                </div>
-                {active ? (
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a', fontFamily: 'JetBrains Mono, monospace' }}>
-                      {active.id}: {active.text}
-                    </div>
-                    {active.isForwarded && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#15803d', fontWeight: '700', marginTop: '6px' }}>
-                        <Zap size={13} /> รับค่า Forwarded!
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: '13px', color: '#94a3b8', fontStyle: 'italic' }}>
-                    [ว่าง - ไม่มีคำสั่ง]
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {activeInStages.Bubbles.length > 0 && (
-          <div style={{ marginTop: '12px', padding: '10px 16px', background: '#fffbeb', border: '1px solid #fef08a', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontSize: '13px', fontWeight: '600' }}>
-            <AlertTriangle size={16} />
-            <span>มี Bubble (ฟองอากาศหน่วงเวลา) แทรกอยู่ในไปป์ไลน์สำหรับคำสั่ง: {activeInStages.Bubbles.join(', ')}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Pipeline Schedule Matrix Table */}
-      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', overflowX: 'auto' }}>
-        <h4 style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b', marginBottom: '14px' }}>
-          ตารางเวลาไทม์ไลน์ของคำสั่งในแต่ละรอบสัญญาณนาฬิกา (Pipeline Timing Diagram):
-        </h4>
-
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'center' }}>
-          <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #cbd5e1' }}>
-              <th style={{ padding: '10px 12px', textAlign: 'left', minWidth: '160px', color: '#334155' }}>คำสั่ง (Instruction)</th>
-              {Array.from({ length: pipelineGrid.maxCycles }, (_, i) => i + 1).map(c => (
-                <th
-                  key={c}
-                  style={{
-                    padding: '8px 10px',
-                    color: c === currentCycle ? '#4f46e5' : '#64748b',
-                    background: c === currentCycle ? '#e0e7ff' : 'transparent',
-                    fontWeight: c === currentCycle ? '800' : '600',
-                    borderLeft: '1px solid #e2e8f0',
-                    minWidth: '55px'
-                  }}
-                >
-                  CC {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {pipelineGrid.schedule.map(row => (
-              <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '10px 12px', textAlign: 'left', fontWeight: '700', color: '#1e293b', fontFamily: 'JetBrains Mono, monospace' }}>
-                  <span style={{ color: '#4f46e5', marginRight: '6px' }}>{row.id}:</span> {row.text}
-                </td>
-                {Array.from({ length: pipelineGrid.maxCycles }, (_, i) => i + 1).map(c => {
-                  const cell = row.cells[c];
-                  const isCurrent = c === currentCycle;
-                  return (
-                    <td
-                      key={c}
-                      style={{
-                        padding: '8px 4px',
-                        borderLeft: '1px solid #e2e8f0',
-                        background: isCurrent ? '#f5f3ff' : 'transparent'
-                      }}
-                    >
-                      {cell ? (
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            fontWeight: '700',
-                            fontSize: '11px',
-                            fontFamily: 'JetBrains Mono, monospace',
-                            background: cell.isBubble
-                              ? '#fef3c7'
-                              : cell.stage === 'IF' ? '#e0f2fe'
-                              : cell.stage === 'ID' ? '#fef3c7'
-                              : cell.stage === 'EX' ? '#dcfce7'
-                              : cell.stage === 'MEM' ? '#ede9fe'
-                              : '#ffe4e6',
-                            color: cell.isBubble
-                              ? '#b45309'
-                              : cell.stage === 'IF' ? '#0369a1'
-                              : cell.stage === 'ID' ? '#b45309'
-                              : cell.stage === 'EX' ? '#15803d'
-                              : cell.stage === 'MEM' ? '#6d28d9'
-                              : '#be123c',
-                            border: isCurrent ? '2px solid #4f46e5' : '1px solid rgba(0,0,0,0.06)'
-                          }}
-                        >
-                          {cell.isBubble ? '🫧 Stall' : cell.stage}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#cbd5e1' }}>-</span>
-                      )}
-                    </td>
-                  );
-                })}
+        {/* Pipeline Timing Matrix Visualizer */}
+        <div className="table-responsive" style={{ margin: '0 0 24px 0' }}>
+          <table className="modern-table">
+            <thead>
+              <tr>
+                <th style={{ width: '220px' }}>คำสั่ง (Instruction)</th>
+                {[1, 2, 3, 4, 5, 6, 7].map(c => (
+                  <th
+                    key={c}
+                    className="cell-center"
+                    style={{
+                      background: currentCycle === c ? '#e0e7ff' : '#f8fafc',
+                      color: currentCycle === c ? '#3730a3' : 'var(--text-primary)',
+                      borderBottom: currentCycle === c ? '3px solid var(--indigo-primary)' : '2px solid var(--border-light)'
+                    }}
+                  >
+                    Cycle {c} {currentCycle === c && '📍'}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {instructions.map((inst, iIdx) => (
+                <tr key={inst.id}>
+                  <td>
+                    <div style={{ fontWeight: '700', color: 'var(--text-primary)', fontSize: '13.5px' }}>{inst.text}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{inst.desc}</div>
+                  </td>
+                  {[1, 2, 3, 4, 5, 6, 7].map(c => {
+                    const st = getStageForInst(iIdx + 1, c);
+                    const isCurrentActive = currentCycle === c && st !== null;
+                    return (
+                      <td
+                        key={c}
+                        className="cell-center"
+                        style={{
+                          background: currentCycle === c ? 'rgba(79, 70, 229, 0.05)' : 'transparent',
+                          transition: 'background 0.3s ease'
+                        }}
+                      >
+                        {st ? (
+                          <span
+                            className={`stage-badge ${st.badgeClass}`}
+                            style={{
+                              transform: isCurrentActive ? 'scale(1.15)' : 'scale(1)',
+                              boxShadow: isCurrentActive ? '0 0 10px rgba(79, 70, 229, 0.4)' : 'none',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            {st.code}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#cbd5e1' }}>-</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Current Cycle Details Box */}
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', padding: '20px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span className="step-number-badge" style={{ fontSize: '14px' }}>รอบที่ {currentCycle} จาก 7</span>
+              <h3 style={{ fontSize: '17px', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                {currentInfo.title}
+              </h3>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span style={{ fontSize: '12.5px', background: '#ecfdf5', color: '#047857', padding: '4px 10px', borderRadius: '4px', fontWeight: '600' }}>
+                ทำงานพร้อมกัน: {currentInfo.activeCount} คำสั่ง
+              </span>
+              <span style={{ fontSize: '12.5px', background: '#e0e7ff', color: '#3730a3', padding: '4px 10px', borderRadius: '4px', fontWeight: '600' }}>
+                สำเร็จแล้ว: {currentInfo.completedCount} / 3 คำสั่ง
+              </span>
+            </div>
+          </div>
+
+          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '16px' }}>
+            {currentInfo.desc}
+          </p>
+
+          {/* Active Stages Breakdown */}
+          <div style={{ marginBottom: '18px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Zap size={15} color="var(--indigo-primary)" />
+              การทำงานในสเตจต่างๆ ณ รอบนี้:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+              {currentInfo.activeStages.map((act, aIdx) => (
+                <div key={aIdx} style={{ background: '#f8fafc', border: '1px solid var(--border-light)', padding: '10px 14px', borderRadius: '6px', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span className={`stage-badge ${act.stage.toLowerCase()}`}>{act.stage}</span>
+                    <strong style={{ color: 'var(--text-primary)' }}>{act.inst}</strong>
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '12.5px' }}>{act.action}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Pipeline Registers / Latches State */}
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Cpu size={15} color="var(--purple-accent)" />
+              สถานะบัฟเฟอร์กั้นระหว่างขั้นตอน (Pipeline Latches):
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' }}>
+              {Object.entries(currentInfo.buffers).map(([bufName, bufState]) => (
+                <div key={bufName} style={{ background: '#faf5ff', border: '1px solid #e9d5ff', padding: '8px 12px', borderRadius: '6px', fontSize: '12.5px' }}>
+                  <span style={{ fontWeight: '700', color: '#6b21a8' }}>{bufName}: </span>
+                  <span style={{ color: '#4c1d95' }}>{bufState}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Comparison Callout */}
+        <div className="callout callout-info" style={{ margin: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+            <Info size={20} color="var(--sky-info)" style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <strong>การเปรียบเทียบประสิทธิภาพ:</strong> หากรัน 3 คำสั่งนี้แบบ <em>ไม่ใช้ไปป์ไลน์ (Sequential)</em> จะต้องใช้เวลาถึง <strong>15 รอบสัญญาณนาฬิกา</strong> (3 คำสั่ง x 5 สเตจ) แต่เมื่อใช้ <em>ไปป์ไลน์ (Pipeline)</em> งานทั้ง 3 คำสั่งจะเสร็จสมบูรณ์ในเวลาเพียง <strong>7 รอบสัญญาณนาฬิกา</strong> ประหยัดเวลาไปได้มากกว่าครึ่งหนึ่ง!
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
